@@ -4,6 +4,18 @@ def test_home(client):
 
 
 def test_register_employee(client):
+
+    # Create manager first
+    client.post(
+        "/register",
+        json={
+            "username": "manager_auth",
+            "password": "Strong@123",
+            "role": "manager"
+        }
+    )
+
+    # Then create employee
     res = client.post(
         "/register",
         json={
@@ -12,11 +24,24 @@ def test_register_employee(client):
             "role": "employee"
         }
     )
+
     assert res.status_code == 200
 
 
+
 def test_login_employee(client):
-    # Ensure user exists
+
+    # Create manager first
+    client.post(
+        "/register",
+        json={
+            "username": "manager_login",
+            "password": "Strong@123",
+            "role": "manager"
+        }
+    )
+
+    # Create employee
     client.post(
         "/register",
         json={
@@ -26,6 +51,7 @@ def test_login_employee(client):
         }
     )
 
+    # Login
     res = client.post(
         "/login",
         json={
@@ -36,4 +62,5 @@ def test_login_employee(client):
 
     assert res.status_code == 200
     assert "role" in res.json()
+
 
