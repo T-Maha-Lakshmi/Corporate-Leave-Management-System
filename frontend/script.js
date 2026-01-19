@@ -13,6 +13,7 @@ function initDashboard() {
     document.getElementById("myLeavesBtn").style.display = "none";
     document.getElementById("approveBtn").style.display = "none";
     document.getElementById("hrBtn").style.display = "none";
+    document.getElementById("managerDashBtn").style.display = "none";
 
     // ================= EMPLOYEE =================
     if (role === "employee") {
@@ -26,6 +27,7 @@ function initDashboard() {
         document.getElementById("applyBtn").style.display = "inline-block";
         document.getElementById("myLeavesBtn").style.display = "inline-block";
         document.getElementById("approveBtn").style.display = "inline-block";
+        document.getElementById("managerDashBtn").style.display = "inline-block";
         showApply(); // 👈 default page for manager
     }
 
@@ -100,13 +102,19 @@ function showApply() {
     document.getElementById("applySection").classList.remove("hidden");
     document.getElementById("approveSection").classList.add("hidden");
     document.getElementById("myLeaveSection").classList.add("hidden");
+    document.getElementById("hrSection").classList.add("hidden");
+    document.getElementById("managerSection").classList.add("hidden");
+
     loadLeaveBalance();
 }
+
 
 function showApprove() {
     document.getElementById("approveSection").classList.remove("hidden");
     document.getElementById("applySection").classList.add("hidden");
     document.getElementById("myLeaveSection").classList.add("hidden");
+    document.getElementById("hrSection").classList.add("hidden");
+    document.getElementById("managerSection").classList.add("hidden");
     loadLeaves();
 }
 
@@ -114,6 +122,8 @@ function showMyLeaves() {
     document.getElementById("applySection").classList.add("hidden");
     document.getElementById("approveSection").classList.add("hidden");
     document.getElementById("myLeaveSection").classList.remove("hidden");
+    document.getElementById("hrSection").classList.add("hidden");
+    document.getElementById("managerSection").classList.add("hidden");
     loadMyLeaves();
 }
 
@@ -125,6 +135,15 @@ function showHR() {
     document.getElementById("hrSection").classList.remove("hidden");
     loadHRData();
 }
+
+function showManagerDashboard() {
+    ["applySection", "approveSection", "myLeaveSection", "hrSection"]
+        .forEach(id => document.getElementById(id).classList.add("hidden"));
+
+    document.getElementById("managerSection").classList.remove("hidden");
+    loadManagerStats();
+}
+
 
 /* ================= APPLY LEAVE ================= */
 function applyLeave() {
@@ -189,8 +208,14 @@ function loadMyLeaves() {
 function loadLeaves() {
     const currentUserId = localStorage.getItem("user_id");
     const role = localStorage.getItem("role");
+    const userId = localStorage.getItem("user_id");
 
-    fetch(`${API}/leaves`)
+    const url =
+        role === "manager"
+            ? `${API}/manager/leaves/${userId}`
+            : `${API}/leaves`;
+
+    fetch(url)
     .then(res => res.json())
     .then(data => {
         const table = document.getElementById("leaveTable");
@@ -353,7 +378,11 @@ function loadHRData() {
             if (managerLeaves.length === 0) {
                 mgrTable.innerHTML += `
                     <tr>
-                        <td>${m.username}</td>
+                        <td>
+                            <a href="#" onclick="viewManagerTeam(${m.id}, '${m.username}', this)">
+                            ${m.username}
+                            </a>
+                        </td>
                         <td>-</td>
                         <td>-</td>    
                         <td>Active</td>
@@ -377,7 +406,11 @@ function loadHRData() {
 
                 mgrTable.innerHTML += `
                     <tr>
-                        <td>${m.username}</td>
+                        <td>
+                            <a href="#" onclick="viewManagerTeam(${m.id}, '${m.username}', this)">
+                            ${m.username}
+                            </a>
+                        </td>
                         <td>${from} → ${to}</td>
                         <td>${l.reason || "-"}</td>
                         <td>${l.status}</td>
@@ -406,6 +439,102 @@ function loadHRData() {
     });
 }
 
+function viewManagerTeam(managerId, managerName, el) {
+
+    const currentRow = el.closest("tr");
+
+    // 🔁 If next row already exists → toggle
+    const nextRow = currentRow.nextElementSibling;
+
+    if (nextRow && nextRow.classList.contains("manager-team-row")) {
+        nextRow.remove(); // collapse
+        return;
+    }
+
+    // ❌ Close any other open manager tables
+    document.querySelectorAll(".manager-team-row").forEach(r => r.remove());
+
+    // ➕ Create expandable row
+    const detailRow = document.createElement("tr");
+    detailRow.className = "manager-team-row";
+
+    const td = document.createElement("td");
+    td.colSpan = 5; // match manager table columns
+
+    td.innerHTML = `
+        <strong>Employees under ${managerName}</strong>
+        <div class="table-wrapper">
+            <table class="inner-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Leave</th>
+                        <th>Reason</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="team-${managerId}">
+                    <tr><td colspan="5">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    detailRow.appendChild(td);
+    currentRow.after(detailRow);
+
+    // 🔄 Load team data
+    fetch(`${API}/hr/manager-team/${managerId}`)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById(`team-${managerId}`);
+            tbody.innerHTML = "";
+
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5">No employees</td></tr>`;
+                return;
+            }
+
+            data.forEach(e => {
+
+                const leave =
+                e.from_date
+                    ? `${e.from_date} → ${e.to_date}`
+                    : "-";
+
+                const reason = e.reason || "-";
+                const status =
+                    e.status === "Rejected" && e.rejection_reason
+                        ? `${e.status} (${e.rejection_reason})`
+                        : e.status || "Active";
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${e.username}</td>
+                        <td>${leave}</td>
+                        <td>${reason}</td>
+                        <td>${status}</td>
+                        <td>-</td>
+                    </tr>
+                 `;
+            });
+
+        });
+}
+
+
+function loadManagerStats() {
+    const managerId = localStorage.getItem("user_id");
+
+    fetch(`${API}/manager/stats/${managerId}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("teamSize").innerText = data.team_size;
+            document.getElementById("teamOnLeave").innerText = data.on_leave;
+            document.getElementById("teamPending").innerText = data.pending;
+        });
+}
 
 
 /* ================= LOGOUT ================= */

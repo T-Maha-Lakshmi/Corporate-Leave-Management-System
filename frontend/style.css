@@ -146,3 +146,16 @@ th {
 #hrSection h3 {
     margin-top: 25px;
 }
+
+.manager-team-row {
+    background: #f7f9ff;
+}
+
+.inner-table th {
+    background: #5a67d8;
+    color: white;
+}
+
+.inner-table td {
+    background: #ffffff;
+}

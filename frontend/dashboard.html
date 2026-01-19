@@ -12,6 +12,8 @@
     <button id="myLeavesBtn" onclick="showMyLeaves()">My Leaves</button>
     <button id="approveBtn" onclick="showApprove()">Approve / Reject</button>
     <button id="hrBtn" onclick="showHR()">HR Dashboard</button>
+    <button id="managerDashBtn" onclick="showManagerDashboard()">Team Dashboard</button>
+
 </div>
 
 
@@ -106,6 +108,13 @@
         <tbody id="managerTable"></tbody>
     </table>
     </div>
+</div>
+<div class="card dashboard-card hidden" id="managerSection">
+    <h2>Manager Team Dashboard</h2>
+
+    <p>Total Team Members: <span id="teamSize"></span></p>
+    <p>Employees on Leave: <span id="teamOnLeave"></span></p>
+    <p>Pending Approvals: <span id="teamPending"></span></p>
 </div>
 
 

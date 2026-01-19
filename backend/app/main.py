@@ -12,6 +12,8 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 TOTAL_LEAVES_PER_YEAR = 20
+MAX_EMPLOYEES_PER_MANAGER = 12
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +68,25 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         password=hash_password(user.password),
         role=user.role
     )
+
+    # ✅ AUTO-ASSIGN MANAGER FOR EMPLOYEE
+    if user.role == "employee":
+        managers = db.query(User).filter(User.role == "manager").all()
+
+        assigned = False
+        for manager in managers:
+            count = db.query(User).filter(User.manager_id == manager.id).count()
+            if count < MAX_EMPLOYEES_PER_MANAGER:
+                new_user.manager_id = manager.id
+                assigned = True
+                break
+
+        if not assigned:
+            raise HTTPException(
+                status_code=400,
+                detail="No manager available for assignment"
+            )
+
 
     db.add(new_user)
     db.commit()
@@ -146,6 +167,13 @@ def approve_leave(
     leave = db.query(Leave).filter(Leave.id == leave_id).first()
     approver = db.query(User).filter(User.id == approver_id).first()
     applicant = db.query(User).filter(User.id == leave.user_id).first()
+    # ✅ Manager can approve ONLY their team
+    if approver.role == "manager":
+        if applicant.manager_id != approver.id:
+            raise HTTPException(
+            status_code=403,
+            detail="You are not responsible for this employee"
+            )
 
     if not leave or not approver or not applicant:
         raise HTTPException(status_code=404, detail="Invalid request")
@@ -213,6 +241,13 @@ def reject_leave(
     leave = db.query(Leave).filter(Leave.id == leave_id).first()
     approver = db.query(User).filter(User.id == approver_id).first()
     applicant = db.query(User).filter(User.id == leave.user_id).first()
+    # ✅ Manager can reject ONLY their team
+    if approver.role == "manager":
+        if applicant.manager_id != approver.id:
+            raise HTTPException(
+            status_code=403,
+            detail="You are not responsible for this employee"
+            )
 
     if not leave or not approver or not applicant:
         raise HTTPException(status_code=404, detail="Invalid request")
@@ -250,6 +285,64 @@ def reject_leave(
 def get_users(db: Session = Depends(get_db)):
     return db.query(User).all()
 
+@app.get("/manager/leaves/{manager_id}")
+def get_manager_leaves(manager_id: int, db: Session = Depends(get_db)):
+
+    results = (
+        db.query(
+            Leave.id,
+            Leave.from_date,
+            Leave.to_date,
+            Leave.reason,
+            Leave.status,
+            Leave.rejection_reason,
+            User.username,
+            User.role,
+            Leave.user_id
+        )
+        .join(User, Leave.user_id == User.id)
+        .filter(User.manager_id == manager_id)
+        .all()
+    )
+
+    return [
+        {
+            "id": r.id,
+            "from_date": r.from_date,
+            "to_date": r.to_date,
+            "reason": r.reason,
+            "status": r.status,
+            "rejection_reason": r.rejection_reason,
+            "username": r.username,
+            "role": r.role,
+            "user_id": r.user_id
+        }
+        for r in results
+    ]
+
+
+@app.get("/manager/stats/{manager_id}")
+def manager_stats(manager_id: int, db: Session = Depends(get_db)):
+
+    team = db.query(User).filter(User.manager_id == manager_id).all()
+    team_ids = [u.id for u in team]
+
+    on_leave = db.query(Leave).filter(
+        Leave.user_id.in_(team_ids),
+        Leave.status == "Approved"
+    ).count()
+
+    pending = db.query(Leave).filter(
+        Leave.user_id.in_(team_ids),
+        Leave.status == "Pending"
+    ).count()
+
+    return {
+        "team_size": len(team),
+        "on_leave": on_leave,
+        "pending": pending
+    }
+
 
 @app.get("/hr/stats/users")
 def total_users(db: Session = Depends(get_db)):
@@ -259,6 +352,37 @@ def total_users(db: Session = Depends(get_db)):
 def users_on_leave(db: Session = Depends(get_db)):
     count = db.query(Leave).filter(Leave.status == "Approved").count()
     return {"on_leave": count}
+
+@app.get("/hr/manager-team/{manager_id}")
+def get_manager_team(manager_id: int, db: Session = Depends(get_db)):
+
+    results = (
+        db.query(
+            User.username,
+            Leave.from_date,
+            Leave.to_date,
+            Leave.reason,
+            Leave.status,
+            Leave.rejection_reason
+        )
+        .join(Leave, Leave.user_id == User.id, isouter=True)
+        .filter(User.manager_id == manager_id)
+        .all()
+    )
+
+    return [
+        {
+            "username": r.username,
+            "from_date": r.from_date,
+            "to_date": r.to_date,
+            "reason": r.reason,
+            "status": r.status,
+            "rejection_reason": r.rejection_reason
+        }
+        for r in results
+    ]
+
+
 
 @app.get("/leave-balance/{user_id}")
 def get_leave_balance(user_id: int, db: Session = Depends(get_db)):
